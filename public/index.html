@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.jsdelivr.net/npm/showdown/dist/showdown.min.js"></script>
+    <script src="./config.js"></script>
+    <title>myGPT</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            height: 90vh;
+            width: 100%;
+            background-color: #7da9e7;
+        }
+        #header {
+            width: 100%;
+            background-color: #535353;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 10px 20px;
+        }
+        #header img {
+            height: 60px;
+            margin-right: 20px;
+        }
+        #header h1 {
+            font-size: 1.5rem;
+            margin: 0;
+        }
+        #model-select-container {
+            width: 80%;
+            margin-top: 10px;
+            display: flex;
+            justify-content: flex-start;
+        }
+        #model-select-label {
+            margin-right: 10px;
+            font-weight: bold;
+            font-size: 1rem;
+        }
+        #model-select {
+            padding: 5px 10px;
+            font-size: 1rem;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+        }
+        #chat-container {
+            width: 80%;
+            border: 1px solid #ccc;
+            border-radius: 10px;
+            padding: 20px;
+            background: white;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-top: 20px;
+        }
+        #messages {
+            height: 600px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 10px;
+            margin-bottom: 10px;
+            background: #f9f9f9;
+        }
+        .message {
+            margin-bottom: 10px;
+            display: flex;
+            align-items: flex-start;
+        }
+        .message.user-message {
+            justify-content: flex-end;
+        }
+        .message-bubble {
+            max-width: 70%;
+            padding: 10px 15px;
+            border-radius: 15px;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        .user .message-bubble {
+            background-color: #ffffff;
+            border: 1px solid #ccc;
+        }
+        .bot .message-bubble {
+            background-color: #e0e0e0;
+            color: #000;
+        }
+        #input-container {
+            display: flex;
+        }
+        #prompt {
+            flex: 1;
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        #send-btn {
+            padding: 10px 20px;
+            background-color: #7da9e7;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            margin-left: 5px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div id="header">
+        <img src="joegpt.png" alt="JoeGPT Logo">
+        <div id="model-select-container">
+            <select id="model-select"></select>
+        </div>
+    </div>
+
+    <div id="chat-container">
+        <div id="messages"></div>
+        <div id="input-container">
+            <input type="text" id="prompt" placeholder="Schreib etwas..."/>
+            <button id="send-btn">Senden</button>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('prompt').placeholder = CONFIG.userPlaceholder;
+        document.getElementById('send-btn').textContent = CONFIG.sendButtonText;
+
+        const messagesDiv = document.getElementById('messages');
+        const modelSelect = document.getElementById('model-select');
+        const promptInput = document.getElementById('prompt');
+        const sendBtn = document.getElementById('send-btn');
+
+        let messagesHistory = []; 
+
+        async function fetchModels() {
+            const response = await fetch('/api/models');
+            const models = await response.json();
+            models.forEach(model => {
+                const option = document.createElement('option');
+                option.value = model;
+                option.textContent = model;
+                modelSelect.appendChild(option);
+            });
+        }
+
+        async function sendMessage() {
+            const currentPrompt = promptInput.value;
+            promptInput.value = "";
+            const model = modelSelect.value;
+
+            if (!currentPrompt) return;
+
+            const userMessageDiv = document.createElement('div');
+            userMessageDiv.className = 'message user-message';
+            userMessageDiv.innerHTML = `<div class="message-bubble user"><strong>Du:</strong> ${currentPrompt}</div>`;
+            messagesDiv.appendChild(userMessageDiv);
+
+            messagesHistory.push(`Du: ${currentPrompt}`);
+
+            const botMessageDiv = document.createElement('div');
+            botMessageDiv.className = 'message bot-message';
+            const botResponseBubble = document.createElement('div');
+            botResponseBubble.className = 'message-bubble bot';
+            botResponseBubble.innerHTML = `<strong>myGPT:</strong> `;
+            botMessageDiv.appendChild(botResponseBubble);
+            messagesDiv.appendChild(botMessageDiv);
+
+            const markdownRenderer = new showdown.Converter();
+
+            if (messagesHistory.length > CONFIG.rememberMessagesCount) {
+                messagesHistory = messagesHistory.slice((-1*CONFIG.rememberMessagesCount));
+            }
+
+            const combinedPrompt = messagesHistory.join('\n') + `\nIch (nur hierauf bitte reagieren): ${currentPrompt}`;
+
+            try {
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ prompt: combinedPrompt, model }),
+                });
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder('utf-8');
+                let done = false;
+                let fullResponse = '';
+
+                while (!done) {
+                    const { value, done: readerDone } = await reader.read();
+                    done = readerDone;
+                    const chunk = decoder.decode(value, { stream: true });
+
+                    try {
+                        const parsedChunk = JSON.parse(chunk);
+                        if (parsedChunk.response) {
+                            fullResponse += parsedChunk.response;
+                            botResponseBubble.innerHTML = `<strong>${CONFIG.botName}:</strong> ` + markdownRenderer.makeHtml(fullResponse);
+                            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                        }
+                    } catch (e) {
+                        console.error('Fehler beim Verarbeiten des Streams:', e.message);
+                    }
+                }
+
+                messagesHistory.push(`${CONFIG.botName}: ${fullResponse}`);
+                if (messagesHistory.length > CONFIG.rememberMessagesCount) {
+                    messagesHistory = messagesHistory.slice((-1*CONFIG.rememberMessagesCount));
+                }
+            } catch (error) {
+                console.error('Fehler beim Senden der Nachricht:', error);
+            }
+        }
+
+        sendBtn.addEventListener('click', sendMessage);
+
+        promptInput.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                sendMessage();
+            }
+        });
+
+        fetchModels();
+    </script>
+</body>
+</html>
