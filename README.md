@@ -18,4 +18,5 @@ and
 # Configuration
 in the two config.js files you can configure different stuff, e.g. base url for Ollama oder some strings for the front-end.
 
+# Sample
 ![JoeGPT](https://github.com/user-attachments/assets/390ab2b8-342c-42fc-94cd-450421f49daa)
