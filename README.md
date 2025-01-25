@@ -3,7 +3,7 @@ A small chatbot that can interact with models hosted via Ollama
 
 # Prerequisites
 - Ollama installed
-- At least one model loaded within Ollana
+- At least one model loaded within Ollama
 - NodeJS installed
 
 # Installation (Win)
